@@ -54,7 +54,7 @@ public class CallPeerMediaHandlerJabberImpl
      * remote side. We use {@link LinkedHashMap}s to make sure that we preserve
      * the order of the individual content extensions.
      */
-    private Map<String, ContentPacketExtension> localContentMap
+    private final Map<String, ContentPacketExtension> localContentMap
         = new LinkedHashMap<String, ContentPacketExtension>();
 
     /**
@@ -62,7 +62,7 @@ public class CallPeerMediaHandlerJabberImpl
      * We use {@link LinkedHashMap}s to make sure that we preserve
      * the order of the individual content extensions.
      */
-    private Map<String, ContentPacketExtension> remoteContentMap
+    private final Map<String, ContentPacketExtension> remoteContentMap
         = new LinkedHashMap<String, ContentPacketExtension>();
 
     /**
@@ -77,9 +77,9 @@ public class CallPeerMediaHandlerJabberImpl
     private boolean supportQualityControls = false;
 
     /**
-     * The current quality controls for this peer media handler if any.
+     * The <tt>QualityControl</tt> of this <tt>CallPeerMediaHandler</tt>.
      */
-    private QualityControlWrapper qualityControls = null;
+    private final QualityControlWrapper qualityControls;
 
     /**
      * Creates a new handler that will be managing media streams for
@@ -91,6 +91,7 @@ public class CallPeerMediaHandlerJabberImpl
     public CallPeerMediaHandlerJabberImpl(CallPeerJabberImpl peer)
     {
         super(peer);
+
         qualityControls = new QualityControlWrapper(peer);
     }
 
@@ -196,7 +197,7 @@ public class CallPeerMediaHandlerJabberImpl
                                      MediaStreamTarget    target,
                                      MediaDirection       direction,
                                      List<RTPExtension>   rtpExtensions,
-                                     boolean masterStream)
+                                     boolean              masterStream)
         throws OperationFailedException
     {
         MediaStream stream
@@ -209,7 +210,7 @@ public class CallPeerMediaHandlerJabberImpl
                     rtpExtensions,
                     masterStream);
 
-        if(stream != null)
+        if (stream != null)
             stream.setName(streamName);
 
         return stream;
@@ -266,8 +267,8 @@ public class CallPeerMediaHandlerJabberImpl
             // determine the direction that we need to announce.
             MediaDirection remoteDirection = JingleUtils.getDirection(
                                             content, getPeer().isInitiator());
-            MediaDirection direction = devDirection
-                            .getDirectionForAnswer(remoteDirection);
+            MediaDirection direction
+                = devDirection.getDirectionForAnswer(remoteDirection);
 
             // intersect the MediaFormats of our device with remote ones
             List<MediaFormat> mutuallySupportedFormats
@@ -315,14 +316,14 @@ public class CallPeerMediaHandlerJabberImpl
                     : (target != null) ? target.getDataAddress().getPort() : 0;
 
             /*
-             * TODO If the offered transport is not supported, attempt to
-             * fall back to a supported one using transport-replace.
+             * TODO If the offered transport is not supported, attempt to fall
+             * back to a supported one using transport-replace.
              */
             setTransportManager(transport.getNamespace());
 
             if (mutuallySupportedFormats.isEmpty()
-                || (devDirection == MediaDirection.INACTIVE)
-                || (targetDataPort == 0))
+                    || (devDirection == MediaDirection.INACTIVE)
+                    || (targetDataPort == 0))
             {
                 // skip stream and continue. contrary to sip we don't seem to
                 // need to send per-stream disabling answer and only one at the
@@ -346,42 +347,30 @@ public class CallPeerMediaHandlerJabberImpl
                         getDynamicPayloadTypes(),
                         getRtpExtensionsRegistry());
 
+            RtpDescriptionPacketExtension localDescription =
+                JingleUtils.getRtpDescription(ourContent);
+
             // ZRTP
-            if(getPeer().getCall().isSipZrtpAttribute())
+            boolean isZRTPAddedToDescription = setZrtpEncryptionToDescription(
+                    mediaType,
+                    localDescription,
+                    description);
+            if(isZRTPAddedToDescription)
             {
-                Map<MediaTypeSrtpControl, SrtpControl> srtpControls
-                    = getSrtpControls();
-                MediaTypeSrtpControl key
-                    = new MediaTypeSrtpControl(mediaType, SrtpControlType.ZRTP);
-                SrtpControl control = srtpControls.get(key);
-
-                if(control == null)
-                {
-                    control
-                        = JabberActivator.getMediaService().createZrtpControl();
-                    srtpControls.put(key, control);
-                }
-
-                String helloHash[] = ((ZrtpControl)control).getHelloHashSep();
-
-                if(helloHash != null && helloHash[1].length() > 0)
-                {
-                    EncryptionPacketExtension encryption = new
-                        EncryptionPacketExtension();
-                    ZrtpHashPacketExtension hash
-                        = new ZrtpHashPacketExtension();
-                    hash.setVersion(helloHash[0]);
-                    hash.setValue(helloHash[1]);
-
-                    encryption.addChildExtension(hash);
-                    RtpDescriptionPacketExtension rtpDescription =
-                        JingleUtils.getRtpDescription(ourContent);
-                    rtpDescription.setEncryption(encryption);
-                }
+                addZRTPAdvertisedEncryptions(false, description, mediaType);
+            }
+            else
+            {
+                // SDES
+                addSDESAdvertisedEncryptions(false, description, mediaType);
+                setSDesEncryptionToDescription(
+                        mediaType,
+                        localDescription,
+                        description);
             }
 
-            // got an content which have inputevt, it means that peer requests
-            // a desktop sharing session so tell it we support inputevt
+            // Got a content which has inputevt. It means that the peer requests
+            // a desktop sharing session so tell it we support inputevt.
             if(content.getChildExtensionsOfType(InputEvtPacketExtension.class)
                     != null)
             {
@@ -392,22 +381,6 @@ public class CallPeerMediaHandlerJabberImpl
             localContentMap.put(content.getName(), ourContent);
 
             atLeastOneValidDescription = true;
-
-            EncryptionPacketExtension encryptionPacketExtension
-                = description.getFirstChildOfType(
-                    EncryptionPacketExtension.class);
-            if(encryptionPacketExtension != null)
-            {
-                ZrtpHashPacketExtension zrtpHashPacketExtension =
-                    encryptionPacketExtension.getFirstChildOfType(
-                        ZrtpHashPacketExtension.class);
-
-                if(zrtpHashPacketExtension != null
-                    && zrtpHashPacketExtension.getValue() != null)
-                {
-                    addAdvertisedEncryptionMethod(SrtpControlType.ZRTP);
-                }
-            }
         }
 
         if (!atLeastOneValidDescription)
@@ -477,14 +450,17 @@ public class CallPeerMediaHandlerJabberImpl
             RtpDescriptionPacketExtension> contents
                 = new HashMap<ContentPacketExtension,
                               RtpDescriptionPacketExtension>();
+
         for(ContentPacketExtension ourContent : sessAccept)
         {
             RtpDescriptionPacketExtension description
-                            = JingleUtils.getRtpDescription(ourContent);
+                = JingleUtils.getRtpDescription(ourContent);
+
             contents.put(ourContent, description);
         }
 
         boolean masterStreamSet = false;
+
         for(Map.Entry<ContentPacketExtension, RtpDescriptionPacketExtension> en
                 : contents.entrySet())
         {
@@ -508,9 +484,11 @@ public class CallPeerMediaHandlerJabberImpl
                 = JingleUtils.getDirection(ourContent, !peer.isInitiator());
 
             // if we answer with video, tell remote peer that video direction is
-            // sendrecv, and whether video device can capture(send)
-            if(type == MediaType.VIDEO && isLocalVideoTransmissionEnabled()
-                && dev.getDirection().allowsSending())
+            // sendrecv, and whether video device can capture/send
+            if ((type == MediaType.VIDEO)
+                    && (isLocalVideoTransmissionEnabled()
+                            || isRTPTranslationEnabled())
+                    && dev.getDirection().allowsSending())
             {
                direction = MediaDirection.SENDRECV;
                ourContent.setSenders(ContentPacketExtension.SendersEnum.both);
@@ -518,8 +496,9 @@ public class CallPeerMediaHandlerJabberImpl
 
             //let's now see what was the format we announced as first and
             //configure the stream with it.
+            String contentName = ourContent.getName();
             ContentPacketExtension theirContent
-                = this.remoteContentMap.get(ourContent.getName());
+                = this.remoteContentMap.get(contentName);
             RtpDescriptionPacketExtension theirDescription
                 = JingleUtils.getRtpDescription(theirContent);
             MediaFormat format = null;
@@ -531,15 +510,13 @@ public class CallPeerMediaHandlerJabberImpl
                     = JingleUtils.payloadTypeToMediaFormat(
                             payload,
                             getDynamicPayloadTypes());
-
                 if(format != null)
                     break;
             }
 
             if(format == null)
             {
-                ProtocolProviderServiceJabberImpl.
-                    throwOperationFailedException(
+                ProtocolProviderServiceJabberImpl.throwOperationFailedException(
                         "No matching codec.",
                         OperationFailedException.ILLEGAL_ARGUMENT,
                         null,
@@ -549,8 +526,9 @@ public class CallPeerMediaHandlerJabberImpl
             //extract the extensions that we are advertising:
             // check whether we will be exchanging any RTP extensions.
             List<RTPExtension> rtpExtensions
-                    = JingleUtils.extractRTPExtensions(
-                            description, this.getRtpExtensionsRegistry());
+                = JingleUtils.extractRTPExtensions(
+                        description,
+                        this.getRtpExtensionsRegistry());
 
             Map<String, String> adv = format.getAdvancedAttributes();
             if(adv != null)
@@ -582,8 +560,15 @@ public class CallPeerMediaHandlerJabberImpl
             }
 
             // create the corresponding stream...
-            initStream(ourContent.getName(), connector, dev, format, target,
-                            direction, rtpExtensions, masterStream);
+            initStream(
+                    contentName,
+                    connector,
+                    dev,
+                    format,
+                    target,
+                    direction,
+                    rtpExtensions,
+                    masterStream);
         }
         return sessAccept;
     }
@@ -601,11 +586,16 @@ public class CallPeerMediaHandlerJabberImpl
     private ContentPacketExtension createContent(MediaDevice dev)
         throws OperationFailedException
     {
-        MediaDirection direction
-            = dev.getDirection().and(
-            getDirectionUserPreference(dev.getMediaType()));
+        MediaType mediaType = dev.getMediaType();
+        MediaDirection direction = dev.getDirection();
 
-        if(isLocallyOnHold())
+        /*
+         * In the case of RTP translation performed by the conference focus,
+         * the conference focus is not required to capture media.
+         */
+        if (!(MediaType.VIDEO.equals(mediaType) && isRTPTranslationEnabled()))
+            direction = direction.and(getDirectionUserPreference(mediaType));
+        if (isLocallyOnHold())
             direction = direction.and(MediaDirection.SENDONLY);
 
         QualityPreset sendQualityPreset = null;
@@ -613,56 +603,30 @@ public class CallPeerMediaHandlerJabberImpl
 
         if(qualityControls != null)
         {
-            // the one we will send is the one the other part has announced
-            // as receive
+            // the one we will send is the one the remote has announced as
+            // receive
             sendQualityPreset = qualityControls.getRemoteReceivePreset();
-            // the one we want to receive is the setting that remote
-            // can send
+            // the one we want to receive is the one the remote can send
             receiveQualityPreset = qualityControls.getRemoteSendMaxPreset();
         }
         if(direction != MediaDirection.INACTIVE)
         {
-            ContentPacketExtension content = createContentForOffer(
-                    dev.getSupportedFormats(sendQualityPreset,
-                        receiveQualityPreset), direction,
-                    dev.getSupportedExtensions());
+            ContentPacketExtension content
+                = createContentForOffer(
+                        dev.getSupportedFormats(
+                                sendQualityPreset,
+                                receiveQualityPreset),
+                        direction,
+                        dev.getSupportedExtensions());
+            RtpDescriptionPacketExtension description
+                = JingleUtils.getRtpDescription(content);
 
+            //SDES
+            // It is important to set SDES before ZRTP in order to make GTALK
+            // application able to work with SDES.
+            setSDesEncryptionToDescription(mediaType, description, null);
             //ZRTP
-            if(getPeer().getCall().isSipZrtpAttribute())
-            {
-                Map<MediaTypeSrtpControl, SrtpControl> srtpControls
-                    = getSrtpControls();
-                MediaTypeSrtpControl key
-                    = new MediaTypeSrtpControl(
-                            dev.getMediaType(),
-                            SrtpControlType.ZRTP);
-                SrtpControl control = srtpControls.get(key);
-
-                if(control == null)
-                {
-                    control
-                        = JabberActivator.getMediaService().createZrtpControl();
-                    srtpControls.put(key, control);
-                }
-
-                String helloHash[] = ((ZrtpControl)control).getHelloHashSep();
-
-                if(helloHash != null && helloHash[1].length() > 0)
-                {
-                    EncryptionPacketExtension encryption = new
-                        EncryptionPacketExtension();
-                    ZrtpHashPacketExtension hash
-                        = new ZrtpHashPacketExtension();
-
-                    hash.setVersion(helloHash[0]);
-                    hash.setValue(helloHash[1]);
-
-                    encryption.addChildExtension(hash);
-                    RtpDescriptionPacketExtension description =
-                        JingleUtils.getRtpDescription(content);
-                    description.setEncryption(encryption);
-                }
-            }
+            setZrtpEncryptionToDescription(mediaType, description, null);
 
             return content;
         }
@@ -705,40 +669,41 @@ public class CallPeerMediaHandlerJabberImpl
     {
         MediaDevice dev = getDefaultDevice(mediaType);
         List<ContentPacketExtension> mediaDescs
-                                    = new ArrayList<ContentPacketExtension>();
+            = new ArrayList<ContentPacketExtension>();
 
         if (dev != null)
         {
             ContentPacketExtension content = createContent(dev);
 
-            if(content != null)
+            if (content != null)
                 mediaDescs.add(content);
         }
 
-        //fail if all devices were inactive
-        if(mediaDescs.isEmpty())
+        // Fail if no media is described (e.g. all devices are inactive).
+        if (mediaDescs.isEmpty())
         {
-            ProtocolProviderServiceJabberImpl
-                .throwOperationFailedException(
+            ProtocolProviderServiceJabberImpl.throwOperationFailedException(
                     "We couldn't find any active Audio/Video devices and "
                         + "couldn't create a call",
-                    OperationFailedException.GENERAL_ERROR, null, logger);
+                    OperationFailedException.GENERAL_ERROR,
+                    null,
+                    logger);
         }
 
-        TransportInfoSender transportInfoSender =
-            getTransportManager().getXmlNamespace().equals(
-                ProtocolProviderServiceJabberImpl.URN_GOOGLE_TRANSPORT_P2P)
+        // Describe the transport(s).
+        TransportInfoSender transportInfoSender
+            = getTransportManager().getXmlNamespace().equals(
+                    ProtocolProviderServiceJabberImpl.URN_GOOGLE_TRANSPORT_P2P)
                 ? new TransportInfoSender()
-                  {
-                      public void sendTransportInfo(
-                          Iterable<ContentPacketExtension> contents)
-                      {
-                          getPeer().sendTransportInfo(contents);
-                      }
-                  }
+                        {
+                            public void sendTransportInfo(
+                                    Iterable<ContentPacketExtension> contents)
+                            {
+                                getPeer().sendTransportInfo(contents);
+                            }
+                        }
                 : null;
 
-        //now add the transport elements
         return harvestCandidates(null, mediaDescs, transportInfoSender);
     }
 
@@ -757,7 +722,7 @@ public class CallPeerMediaHandlerJabberImpl
     public List<ContentPacketExtension> createContentList()
         throws OperationFailedException
     {
-        //Audio Media Description
+        // Describe the media.
         List<ContentPacketExtension> mediaDescs
             = new ArrayList<ContentPacketExtension>();
 
@@ -767,11 +732,19 @@ public class CallPeerMediaHandlerJabberImpl
 
             if (dev != null)
             {
-                MediaDirection direction
-                    = dev.getDirection().and(
-                            getDirectionUserPreference(mediaType));
+                MediaDirection direction = dev.getDirection();
 
-                if(isLocallyOnHold())
+                /*
+                 * In the case of RTP translation performed by the conference
+                 * focus, the conference focus is not required to capture media.
+                 */
+                if (!(MediaType.VIDEO.equals(mediaType) 
+                        && isRTPTranslationEnabled()))
+                {
+                    direction
+                        = direction.and(getDirectionUserPreference(mediaType));
+                }
+                if (isLocallyOnHold())
                     direction = direction.and(MediaDirection.SENDONLY);
 
                 /*
@@ -782,58 +755,33 @@ public class CallPeerMediaHandlerJabberImpl
                 if (MediaDirection.RECVONLY.equals(direction))
                     direction = MediaDirection.INACTIVE;
 
-                if(direction != MediaDirection.INACTIVE)
+                if (direction != MediaDirection.INACTIVE)
                 {
                     ContentPacketExtension content
                         = createContentForOffer(
                                 dev.getSupportedFormats(),
                                 direction,
                                 dev.getSupportedExtensions());
-
-                    //ZRTP
-                    if(getPeer().getCall().isSipZrtpAttribute())
-                    {
-                        Map<MediaTypeSrtpControl, SrtpControl> srtpControls
-                            = getSrtpControls();
-                        MediaTypeSrtpControl key
-                            = new MediaTypeSrtpControl(
-                                    mediaType,
-                                    SrtpControlType.ZRTP);
-                        SrtpControl control = srtpControls.get(key);
-
-                        if(control == null)
-                        {
-                            control
-                                = JabberActivator.getMediaService()
-                                        .createZrtpControl();
-                            srtpControls.put(key, control);
-                        }
-
-                        String helloHash[] =
-                            ((ZrtpControl) control).getHelloHashSep();
-
-                        if(helloHash != null && helloHash[1].length() > 0)
-                        {
-                            EncryptionPacketExtension encryption = new
-                                EncryptionPacketExtension();
-                            ZrtpHashPacketExtension hash
-                                = new ZrtpHashPacketExtension();
-                            hash.setVersion(helloHash[0]);
-                            hash.setValue(helloHash[1]);
-
-                            encryption.addChildExtension(hash);
-                            RtpDescriptionPacketExtension description =
-                                JingleUtils.getRtpDescription(content);
-                            description.setEncryption(encryption);
-                        }
-                    }
-
-                    /* we request a desktop sharing session so add the inputevt
-                     * extension in the "video" content
-                     */
                     RtpDescriptionPacketExtension description
                         = JingleUtils.getRtpDescription(content);
-                    if(description.getMedia().equals(MediaType.VIDEO.toString())
+
+                    //SDES
+                    // It is important to set SDES before ZRTP in order to make
+                    // GTALK application able to work with SDES.
+                    setSDesEncryptionToDescription(
+                            mediaType,
+                            description,
+                            null);
+                    //ZRTP
+                    setZrtpEncryptionToDescription(
+                            mediaType,
+                            description,
+                            null);
+
+                    // we request a desktop sharing session so add the inputevt
+                    // extension in the "video" content
+                    if (description.getMedia().equals(
+                                MediaType.VIDEO.toString())
                             && getLocalInputEvtAware())
                     {
                         content.addChildExtension(
@@ -845,8 +793,8 @@ public class CallPeerMediaHandlerJabberImpl
             }
         }
 
-        //fail if all devices were inactive
-        if(mediaDescs.isEmpty())
+        // Fail if no media is described (e.g. all devices are inactive).
+        if (mediaDescs.isEmpty())
         {
             ProtocolProviderServiceJabberImpl.throwOperationFailedException(
                     "We couldn't find any active Audio/Video devices"
@@ -856,6 +804,7 @@ public class CallPeerMediaHandlerJabberImpl
                     logger);
         }
 
+        // Describe the transport(s).
         TransportInfoSender transportInfoSender
             = getTransportManager().getXmlNamespace().equals(
                     ProtocolProviderServiceJabberImpl.URN_GOOGLE_TRANSPORT_P2P)
@@ -869,7 +818,6 @@ public class CallPeerMediaHandlerJabberImpl
                         }
                 : null;
 
-        //now add the transport elements
         return harvestCandidates(null, mediaDescs, transportInfoSender);
     }
 
@@ -920,8 +868,8 @@ public class CallPeerMediaHandlerJabberImpl
      * processing to stop (method setState in CallPeer).
      */
     public void reinitAllContents()
-            throws OperationFailedException,
-            IllegalArgumentException
+        throws OperationFailedException,
+               IllegalArgumentException
     {
         boolean masterStreamSet = false;
         for(String key : remoteContentMap.keySet())
@@ -1053,15 +1001,17 @@ public class CallPeerMediaHandlerJabberImpl
      * in this operation can synchronize to the mediaHandler instance to wait
      * processing to stop (method setState in CallPeer).
      */
-    private void processContent(ContentPacketExtension content, boolean modify,
-                                boolean masterStream)
+    private void processContent(
+            ContentPacketExtension content,
+            boolean modify,
+            boolean masterStream)
         throws OperationFailedException,
                IllegalArgumentException
     {
         RtpDescriptionPacketExtension description
             = JingleUtils.getRtpDescription(content);
         MediaType mediaType
-            = MediaType.parseString( description.getMedia() );
+            = MediaType.parseString(description.getMedia());
 
         //stream target
         TransportManagerJabberImpl transportManager = getTransportManager();
@@ -1077,8 +1027,8 @@ public class CallPeerMediaHandlerJabberImpl
             return;
         }
 
-        List<MediaFormat> supportedFormats = JingleUtils.extractFormats(
-                        description, getDynamicPayloadTypes());
+        List<MediaFormat> supportedFormats
+            = JingleUtils.extractFormats(description, getDynamicPayloadTypes());
 
         MediaDevice dev = getDefaultDevice(mediaType);
 
@@ -1101,9 +1051,14 @@ public class CallPeerMediaHandlerJabberImpl
             //remote party must have messed up our Jingle description.
             //throw an exception.
             ProtocolProviderServiceJabberImpl.throwOperationFailedException(
-                "Remote party sent an invalid Jingle answer.",
-                 OperationFailedException.ILLEGAL_ARGUMENT, null, logger);
+                    "Remote party sent an invalid Jingle answer.",
+                    OperationFailedException.ILLEGAL_ARGUMENT,
+                    null,
+                    logger);
         }
+
+        addZRTPAdvertisedEncryptions(true, description, mediaType);
+        addSDESAdvertisedEncryptions(true, description, mediaType);
 
         StreamConnector connector
             = transportManager.getStreamConnector(mediaType);
@@ -1111,7 +1066,6 @@ public class CallPeerMediaHandlerJabberImpl
         //determine the direction that we need to announce.
         MediaDirection remoteDirection
             = JingleUtils.getDirection(content, getPeer().isInitiator());
-
         MediaDirection direction
             = devDirection.getDirectionForAnswer(remoteDirection);
 
@@ -1119,22 +1073,20 @@ public class CallPeerMediaHandlerJabberImpl
         List<RTPExtension> remoteRTPExtensions
                 = JingleUtils.extractRTPExtensions(
                         description, getRtpExtensionsRegistry());
-
         List<RTPExtension> supportedExtensions
                 = getExtensionsForType(mediaType);
+        List<RTPExtension> rtpExtensions
+            = intersectRTPExtensions(remoteRTPExtensions, supportedExtensions);
 
-        List<RTPExtension> rtpExtensions = intersectRTPExtensions(
-                        remoteRTPExtensions, supportedExtensions);
+        Map<String, String> adv
+            = supportedFormats.get(0).getAdvancedAttributes();
 
-        Map<String, String> adv = supportedFormats.get(0).getAdvancedAttributes();
         if(adv != null)
         {
             for(Map.Entry<String, String> f : adv.entrySet())
             {
                 if(f.getKey().equals("imageattr"))
-                {
                     supportQualityControls = true;
-                }
             }
         }
 
@@ -1156,7 +1108,7 @@ public class CallPeerMediaHandlerJabberImpl
                     MediaFormat fmt = fmts.get(0);
 
                     ((VideoMediaStream)stream).updateQualityControl(
-                        fmt.getAdvancedAttributes());
+                            fmt.getAdvancedAttributes());
                 }
             }
 
@@ -1169,30 +1121,22 @@ public class CallPeerMediaHandlerJabberImpl
                     = (dev == null)
                         ? null
                         : intersectFormats(
-                            supportedFormats,
-                            dev.getSupportedFormats(
-                                sendQualityPreset, receiveQualityPreset));
-            }
-        }
-
-        EncryptionPacketExtension encryptionPacketExtension
-            = description.getFirstChildOfType(EncryptionPacketExtension.class);
-        if(encryptionPacketExtension != null)
-        {
-            ZrtpHashPacketExtension zrtpHashPacketExtension =
-                encryptionPacketExtension.getFirstChildOfType(
-                    ZrtpHashPacketExtension.class);
-
-            if(zrtpHashPacketExtension != null
-                && zrtpHashPacketExtension.getValue() != null)
-            {
-                addAdvertisedEncryptionMethod(SrtpControlType.ZRTP);
+                                supportedFormats,
+                                dev.getSupportedFormats(
+                                        sendQualityPreset,
+                                        receiveQualityPreset));
             }
         }
 
         // create the corresponding stream...
-        initStream(content.getName(), connector, dev,
-                supportedFormats.get(0), target, direction, rtpExtensions,
+        initStream(
+                content.getName(),
+                connector,
+                dev,
+                supportedFormats.get(0),
+                target,
+                direction,
+                rtpExtensions,
                 masterStream);
     }
 
@@ -1557,32 +1501,34 @@ public class CallPeerMediaHandlerJabberImpl
     {
         MediaDirection streamDirection = stream.getDirection();
 
-        if(streamDirection.allowsSending())
+        if (streamDirection.allowsSending())
             return streamDirection;
 
-        //when calculating a direction we need to take into account 1) what
-        //direction the remote party had asked for before putting us on hold,
-        //2) what the user preference is for the stream's media type, 3) our
-        //local hold status, 4) the direction supported by the device this
-        //stream is reading from.
+        /*
+         * When calculating a direction we need to take into account 1) what
+         * direction the remote party had asked for before putting us on hold,
+         * 2) what the user preference is for the stream's media type, 3) our
+         * local hold status, 4) the direction supported by the device this
+         * stream is reading from.
+         */
 
-        //1. check what the remote party originally told us (from our persp.)
+        // 1. what the remote party originally told us (from our perspective)
         ContentPacketExtension content = remoteContentMap.get(stream.getName());
+        MediaDirection postHoldDir
+            = JingleUtils.getDirection(content, !getPeer().isInitiator());
 
-        MediaDirection postHoldDir = JingleUtils.getDirection(content,
-                        !getPeer().isInitiator());
-
-        //2. check the user preference.
+        // 2. the user preference
         MediaDevice device = stream.getDevice();
+
         postHoldDir
             = postHoldDir.and(
                     getDirectionUserPreference(device.getMediaType()));
 
-        //3. check our local hold status.
-        if(isLocallyOnHold())
-            postHoldDir.and(MediaDirection.SENDONLY);
+        // 3. our local hold status
+        if (isLocallyOnHold())
+            postHoldDir = postHoldDir.and(MediaDirection.SENDONLY);
 
-        //4. check the device direction.
+        // 4. the device direction
         postHoldDir = postHoldDir.and(device.getDirection());
 
         stream.setDirection(postHoldDir);

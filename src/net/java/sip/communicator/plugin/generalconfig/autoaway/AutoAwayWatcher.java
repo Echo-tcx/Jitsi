@@ -21,6 +21,7 @@ import org.osgi.framework.*;
 
 /**
  * Listens for idle events from SystemActivityNotifications Service.
+ *
  * @author Damian Minkov
  */
 public class AutoAwayWatcher
@@ -51,12 +52,16 @@ public class AutoAwayWatcher
     public AutoAwayWatcher(ConfigurationService configurationService)
     {
         // if enabled start
-        String enabledDefault = GeneralConfigPluginActivator.getResources()
-            .getSettingsString(Preferences.ENABLE);
+        String enabledDefault
+            = GeneralConfigPluginActivator.getResources().getSettingsString(
+                    Preferences.ENABLE);
 
-        if(configurationService.getBoolean(Preferences.ENABLE,
-                                           Boolean.valueOf(enabledDefault)))
+        if (configurationService.getBoolean(
+                Preferences.ENABLE,
+                Boolean.parseBoolean(enabledDefault)))
+        {
             start();
+        }
 
         // listens for changes in configuration enable/disable
         configurationService.addPropertyChangeListener(
@@ -65,7 +70,7 @@ public class AutoAwayWatcher
                 {
                     public void propertyChange(PropertyChangeEvent evt)
                     {
-                        if(Boolean.parseBoolean((String)evt.getNewValue()))
+                        if(Boolean.parseBoolean((String) evt.getNewValue()))
                             start();
                         else
                             stopInner();
@@ -85,7 +90,37 @@ public class AutoAwayWatcher
                 }
             }
         );
+    }
 
+    /**
+     * Starts and add needed listeners.
+     */
+    private void start()
+    {
+        if(idleListener == null)
+        {
+
+            idleListener = new IdleListener();
+
+            SystemActivityNotificationsService
+                systemActivityNotificationsService
+                    =  getSystemActivityNotificationsService();
+
+            systemActivityNotificationsService.addIdleSystemChangeListener(
+                    StatusUpdateThread.getTimer() * 60 * 1000,
+                    idleListener);
+            systemActivityNotificationsService
+                .addSystemActivityChangeListener(idleListener);
+
+            startListeningForNewProviders();
+        }
+    }
+
+    /**
+     * Start listening for new providers and their registration states.
+     */
+    private void startListeningForNewProviders()
+    {
         // listen for new providers
         GeneralConfigPluginActivator.bundleContext.addServiceListener(this);
 
@@ -95,7 +130,7 @@ public class AutoAwayWatcher
         {
             protocolProviderRefs = GeneralConfigPluginActivator.bundleContext
                 .getServiceReferences(ProtocolProviderService.class.getName(),
-                                      null);
+                    null);
         }
         catch (InvalidSyntaxException ex)
         {
@@ -121,19 +156,41 @@ public class AutoAwayWatcher
     }
 
     /**
-     * Starts and add needed listeners.
+     * Stop listening for new providers and their registration states.
      */
-    private void start()
+    private void stopListeningForNewProviders()
     {
-        if(idleListener == null)
-        {
-            idleListener = new IdleListener();
+        // stop listen for new providers
+        GeneralConfigPluginActivator.bundleContext.removeServiceListener(this);
 
-            getSystemActivityNotificationsService()
-                .addIdleSystemChangeListener(
-                    StatusUpdateThread.getTimer()*60*1000, idleListener);
-            getSystemActivityNotificationsService()
-                .addSystemActivityChangeListener(idleListener);
+        // lets check current providers and remove registration state listener
+        ServiceReference[] protocolProviderRefs = null;
+        try
+        {
+            protocolProviderRefs = GeneralConfigPluginActivator.bundleContext
+                .getServiceReferences(ProtocolProviderService.class.getName(),
+                    null);
+        }
+        catch (InvalidSyntaxException ex)
+        {
+            // this shouldn't happen since we're providing no parameter string
+            // but let's log just in case.
+            logger.error(
+                "Error while retrieving service refs", ex);
+            return;
+        }
+
+        // in case we found any
+        if (protocolProviderRefs != null)
+        {
+            for (int i = 0; i < protocolProviderRefs.length; i++)
+            {
+                ProtocolProviderService provider = (ProtocolProviderService)
+                    GeneralConfigPluginActivator.bundleContext
+                        .getService(protocolProviderRefs[i]);
+
+                this.handleProviderRemoved(provider);
+            }
         }
     }
 
@@ -147,18 +204,25 @@ public class AutoAwayWatcher
     }
 
     /**
-     * Stops and removes the listeners, without the global service listener.
+     * Stops and removes the listeners.
      */
     private void stopInner()
     {
-        if(idleListener == null)
-            return;
+        if(idleListener != null)
+        {
+            SystemActivityNotificationsService
+                systemActivityNotificationsService
+                    =  getSystemActivityNotificationsService();
 
-        getSystemActivityNotificationsService()
-            .removeIdleSystemChangeListener(idleListener);
-        getSystemActivityNotificationsService()
-            .removeSystemActivityChangeListener(idleListener);
-        idleListener = null;
+            systemActivityNotificationsService.removeIdleSystemChangeListener(
+                    idleListener);
+            systemActivityNotificationsService
+                .removeSystemActivityChangeListener(idleListener);
+
+            stopListeningForNewProviders();
+
+            idleListener = null;
+        }
     }
 
     /**
@@ -171,18 +235,15 @@ public class AutoAwayWatcher
                 : GeneralConfigPluginActivator.getProtocolProviders())
         {
             OperationSetPresence presence
-                = protocolProviderService
-                    .getOperationSet(
-                            OperationSetPresence.class);
+                = protocolProviderService.getOperationSet(
+                        OperationSetPresence.class);
 
             if(presence == null)
                 continue;
 
-            PresenceStatus status = presence
-                    .getPresenceStatus();
+            PresenceStatus status = presence.getPresenceStatus();
 
-            if (status.getStatus()
-                    < PresenceStatus.AVAILABLE_THRESHOLD)
+            if (status.getStatus() < PresenceStatus.AVAILABLE_THRESHOLD)
             {
                 // already (manually) set to away or lower
                 continue;
@@ -190,21 +251,25 @@ public class AutoAwayWatcher
 
             addProviderToLastStates(protocolProviderService, status);
 
-            PresenceStatus newStatus =
-                    StatusUpdateThread.findAwayStatus(presence);
+            PresenceStatus newStatus
+                = StatusUpdateThread.findAwayStatus(presence);
 
             try
             {
                 if (newStatus != null)
-                    presence
-                        .publishPresenceStatus(
-                                newStatus,
-                                newStatus.getStatusName());
-            } catch (IllegalArgumentException e)
+                {
+                    presence.publishPresenceStatus(
+                            newStatus,
+                            newStatus.getStatusName());
+                }
+            }
+            catch (IllegalArgumentException e)
             {
-            } catch (IllegalStateException e)
+            }
+            catch (IllegalStateException e)
             {
-            } catch (OperationFailedException e)
+            }
+            catch (OperationFailedException e)
             {
             }
         }
@@ -231,11 +296,13 @@ public class AutoAwayWatcher
                 {
                     presence
                         .publishPresenceStatus(lastState, "");
-                } catch (IllegalArgumentException e)
+                }
+                catch (IllegalArgumentException e)
                 {
-                } catch (IllegalStateException e)
+                }catch (IllegalStateException e)
                 {
-                } catch (OperationFailedException e)
+                }
+                catch (OperationFailedException e)
                 {
                 }
                 removeProviderFromLastStates(protocolProviderService);
@@ -250,7 +317,8 @@ public class AutoAwayWatcher
     private SystemActivityNotificationsService
         getSystemActivityNotificationsService()
     {
-        return  ServiceUtils.getService(
+        return
+            ServiceUtils.getService(
                     GeneralConfigPluginActivator.bundleContext,
                     SystemActivityNotificationsService.class);
     }
@@ -265,22 +333,19 @@ public class AutoAwayWatcher
      */
     public void serviceChanged(ServiceEvent serviceEvent)
     {
-        Object sService = GeneralConfigPluginActivator.bundleContext
-            .getService(serviceEvent.getServiceReference());
+        Object service
+            = GeneralConfigPluginActivator.bundleContext.getService(
+                    serviceEvent.getServiceReference());
 
         // we don't care if the source service is not a protocol provider
-        if (! (sService instanceof ProtocolProviderService))
+        if (service instanceof ProtocolProviderService)
         {
-            return;
-        }
+            int serviceEventType = serviceEvent.getType();
 
-        if (serviceEvent.getType() == ServiceEvent.REGISTERED)
-        {
-            this.handleProviderAdded((ProtocolProviderService)sService);
-        }
-        else if (serviceEvent.getType() == ServiceEvent.UNREGISTERING)
-        {
-            this.handleProviderRemoved( (ProtocolProviderService) sService);
+            if (serviceEventType == ServiceEvent.REGISTERED)
+                handleProviderAdded((ProtocolProviderService) service);
+            else if (serviceEventType == ServiceEvent.UNREGISTERING)
+                handleProviderRemoved((ProtocolProviderService) service);
         }
     }
 
@@ -290,7 +355,7 @@ public class AutoAwayWatcher
      * @param provider ProtocolProviderService
      */
     private synchronized void handleProviderAdded(
-        ProtocolProviderService provider)
+            ProtocolProviderService provider)
     {
         provider.addRegistrationStateChangeListener(this);
     }
@@ -314,11 +379,6 @@ public class AutoAwayWatcher
         ProtocolProviderService provider)
     {
         lastStates.remove(provider);
-
-        if(lastStates.size() == 0)
-        {
-            stopInner();
-        }
     }
 
     /**
@@ -328,12 +388,11 @@ public class AutoAwayWatcher
      * @param status the status to save.
      */
     private synchronized void addProviderToLastStates(
-        ProtocolProviderService provider, PresenceStatus status)
+            ProtocolProviderService provider,
+            PresenceStatus status)
     {
         if(lastStates.size() == 0)
-        {
             start();
-        }
 
         lastStates.put(provider, status);
     }

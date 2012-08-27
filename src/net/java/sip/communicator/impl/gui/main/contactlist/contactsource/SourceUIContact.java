@@ -16,9 +16,12 @@ import net.java.sip.communicator.impl.gui.*;
 import net.java.sip.communicator.impl.gui.main.contactlist.*;
 import net.java.sip.communicator.impl.gui.utils.*;
 import net.java.sip.communicator.service.contactsource.*;
+import net.java.sip.communicator.service.customcontactactions.*;
 import net.java.sip.communicator.service.protocol.*;
 import net.java.sip.communicator.service.protocol.globalstatus.*;
 import net.java.sip.communicator.util.*;
+import net.java.sip.communicator.util.swing.*;
+import org.osgi.framework.*;
 
 /**
  * The <tt>SourceUIContact</tt> is the implementation of the UIContact for the
@@ -187,6 +190,40 @@ public class SourceUIContact
     }
 
     /**
+     * Returns a list of all contained <tt>UIContactDetail</tt>s.
+     *
+     * @return a list of all contained <tt>UIContactDetail</tt>s
+     */
+    public List<UIContactDetail> getContactDetails()
+    {
+        return getContactDetails(sourceContact);
+    }
+
+    /**
+     * Returns a list of all contained <tt>UIContactDetail</tt>s.
+     *
+     * @param sourceContact the source contact we get details from.
+     * @return a list of all contained <tt>UIContactDetail</tt>s
+     */
+    public static List<UIContactDetail> getContactDetails(
+        SourceContact sourceContact)
+    {
+        List<UIContactDetail> resultList
+            = new LinkedList<UIContactDetail>();
+
+        Iterator<ContactDetail> details
+            = sourceContact.getContactDetails().iterator();
+
+        while (details.hasNext())
+        {
+            ContactDetail detail = details.next();
+
+            resultList.add(new SourceContactDetail(detail, null, sourceContact));
+        }
+        return resultList;
+    }
+
+    /**
      * Returns a list of <tt>UIContactDetail</tt>s supporting the given
      * <tt>OperationSet</tt> class.
      * @param opSetClass the <tt>OperationSet</tt> class we're interested in
@@ -212,7 +249,8 @@ public class SourceUIContact
             if ((supportedOperationSets != null)
                     && supportedOperationSets.contains(opSetClass))
             {
-                resultList.add(new SourceContactDetail(detail, opSetClass));
+                resultList.add(new SourceContactDetail(
+                    detail, opSetClass, sourceContact));
             }
         }
         return resultList;
@@ -245,13 +283,15 @@ public class SourceUIContact
     public void setContactNode(ContactNode contactNode)
     {
         this.contactNode = contactNode;
+        if (contactNode == null)
+            ExternalContactSource.removeUIContact(sourceContact);
     }
 
     /**
      * The implementation of the <tt>UIContactDetail</tt> interface for the
      * external source <tt>ContactDetail</tt>s.
      */
-    private class SourceContactDetail extends UIContactDetail
+    protected static class SourceContactDetail extends UIContactDetail
     {
         /**
          * Creates an instance of <tt>SourceContactDetail</tt> by specifying
@@ -262,7 +302,8 @@ public class SourceUIContact
          * preferred protocol provider
          */
         public SourceContactDetail( ContactDetail detail,
-                                    Class<? extends OperationSet> opSetClass)
+                                    Class<? extends OperationSet> opSetClass,
+                                    SourceContact sourceContact)
         {
             super(  detail.getContactAddress(),
                     detail.getContactAddress(),
@@ -270,7 +311,8 @@ public class SourceUIContact
                     detail.getLabels(),
                     null,
                     detail.getPreferredProtocolProvider(opSetClass),
-                    detail.getPreferredProtocol(opSetClass));
+                    detail.getPreferredProtocol(opSetClass),
+                    detail);
 
             ContactSourceService contactSource
                 = sourceContact.getContactSource();
@@ -283,6 +325,27 @@ public class SourceUIContact
                 if (prefix != null)
                     setPrefix(prefix);
             }
+        }
+
+        /**
+         * Creates an instance of <tt>SourceContactDetail</tt> by specifying
+         * the underlying <tt>detail</tt> and the <tt>OperationSet</tt> class
+         * for it.
+         *
+         * @param displayName the display name
+         * @param sourceContact the source contact
+         */
+        public SourceContactDetail(String displayName,
+                                   SourceContact sourceContact)
+        {
+            super(  displayName,
+                    displayName,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    sourceContact);
         }
 
         /**
@@ -406,5 +469,19 @@ public class SourceUIContact
 
             toolTip.addLine(jLabels);
         }
+    }
+
+    /**
+     * Returns all custom action buttons for this notification contact.
+     *
+     * @return a list of all custom action buttons for this notification contact
+     */
+    public Collection<SIPCommButton> getContactCustomActionButtons()
+    {
+        if (sourceContact != null)
+            return ExternalContactSource
+                    .getContactCustomActionButtons(sourceContact);
+
+        return null;
     }
 }

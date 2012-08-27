@@ -1,5 +1,5 @@
 Bundle-Activator: net.java.sip.communicator.util.UtilActivator
-Bundle-Name: SIP Communicator Utility Packages
+Bundle-Name: Jitsi Utility Packages
 Bundle-Description: A bundle that export packages with utility classes.
 Bundle-Vendor: jitsi.org
 Bundle-Version: 0.0.1
@@ -31,6 +31,7 @@ Import-Package: com.sun.awt,
  net.java.sip.communicator.service.netaddr,
  net.java.sip.communicator.service.netaddr.event,
  net.java.sip.communicator.service.contactlist,
+ net.java.sip.communicator.service.browserlauncher,
  org.apache.xml.serialize,
  org.jitsi.service.configuration,
  org.jitsi.service.resources,

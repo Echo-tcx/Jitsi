@@ -30,6 +30,7 @@ import org.jitsi.util.swing.*;
  * The <tt>UIVideoHandler</tt> is meant to handle all video related events.
  *
  * @author Yana Stamcheva
+ * @author Lyubomir Marinov
  */
 public class UIVideoHandler
 {
@@ -248,10 +249,9 @@ public class UIVideoHandler
 
                 if (!isLocalVideoListenerAdded)
                 {
+                    isLocalVideoListenerAdded = true;
                     telephony.addPropertyChangeListener(
                             call, videoTelephonyListener);
-
-                    isLocalVideoListenerAdded = true;
                 }
 
                 synchronized (videoContainers)
@@ -350,46 +350,43 @@ public class UIVideoHandler
      * Removes the video listener
      */
     public void removeVideoListener(
-                                CallPeer callPeer,
-                                VideoTelephonyListener videoTelephonyListener)
+            CallPeer callPeer,
+            VideoTelephonyListener videoTelephonyListener)
     {
         final Call call = callPeer.getCall();
         if (call == null)
             return;
 
-        final OperationSetVideoTelephony telephony =
-            call.getProtocolProvider()
-                .getOperationSet(OperationSetVideoTelephony.class);
+        final OperationSetVideoTelephony telephony
+            = call.getProtocolProvider().getOperationSet(
+                    OperationSetVideoTelephony.class);
         if (telephony == null)
             return;
 
         if (videoTelephonyListener == null)
             return;
 
-        telephony.removeVideoListener(
-                callPeer, videoTelephonyListener);
+        telephony.removeVideoListener(callPeer, videoTelephonyListener);
 
         telephony.removeVisualComponentResolveListener(
-                callPeer, videoTelephonyListener);
+                callPeer,
+                videoTelephonyListener);
 
         if (!CallManager.isVideoStreaming(call) && isLocalVideoListenerAdded)
         {
             telephony.removePropertyChangeListener(
-                    call, videoTelephonyListener);
+                    call,
+                    videoTelephonyListener);
             isLocalVideoListenerAdded = false;
 
             if (localVideo != null)
-            {
-                telephony.disposeLocalVisualComponent(
-                        callPeer, localVideo);
                 localVideo = null;
-            }
         }
 
         synchronized (videoContainers)
         {
             if (!CallManager.isVideoStreaming(call)
-                && telephony.equals(videoTelephony))
+                    && telephony.equals(videoTelephony))
                 videoTelephony = null;
 
             int videoContainerCount;
@@ -409,9 +406,7 @@ public class UIVideoHandler
         if (memberToolbars != null)
         {
             for (ConferenceMember member : callPeer.getConferenceMembers())
-            {
                 memberToolbars.remove(member);
-            }
         }
 
         callRenderer.exitFullScreen();
@@ -509,7 +504,7 @@ public class UIVideoHandler
             CallPanel callContainer = callRenderer.getCallContainer();
 
             if (callContainer.isConference()
-                && !(callRenderer instanceof VideoConferenceCallPanel))
+                    && !(callRenderer instanceof VideoConferenceCallPanel))
             {
                 callContainer.enableConferenceInterface(true);
             }
@@ -523,10 +518,11 @@ public class UIVideoHandler
         public void videoRemoved(VideoEvent event)
         {
             CallPanel callContainer = callRenderer.getCallContainer();
-            if (callContainer.isConference()
-                && callPeer.getCall() != null
-                && !CallManager.isVideoStreaming(callPeer.getCall())
-                && (callRenderer instanceof VideoConferenceCallPanel))
+
+            if (callContainer.isConference() 
+                    && (callPeer.getCall() != null)
+                    && !CallManager.isVideoStreaming(callPeer.getCall())
+                    && (callRenderer instanceof VideoConferenceCallPanel))
             {
                 callContainer.enableConferenceInterface(false);
             }
@@ -556,13 +552,15 @@ public class UIVideoHandler
 
             // If the member is already added in the call we refresh the
             // the video container, otherwise it will be refreshed when added.
-            if ((CallManager.addressesAreEqual( confMember.getAddress(),
-                                                focusCallPeer.getAddress())
-                    && peerToolbars.containsKey(focusCallPeer))
-                || memberToolbars.containsKey(event.getConferenceMember()))
+            if ((CallManager.addressesAreEqual(
+                            confMember.getAddress(),
+                            focusCallPeer.getAddress())
+                        && peerToolbars.containsKey(focusCallPeer))
+                    || memberToolbars.containsKey(event.getConferenceMember()))
             {
                 handleVideoEvent(
-                    confMember.getConferenceFocusCallPeer().getCall(), null);
+                    confMember.getConferenceFocusCallPeer().getCall(),
+                    null);
             }
         }
     }
@@ -575,12 +573,16 @@ public class UIVideoHandler
      * <tt>Component</tt> representing video and the provider it was added into
      * or <tt>null</tt> if such information is not available
      */
-    public void handleVideoEvent(   final Call call,
-                                    final VideoEvent event)
+    public void handleVideoEvent(final Call call, final VideoEvent event)
     {
         if (event != null && logger.isTraceEnabled())
-            logger.trace("UI video event received originated in: "
-                    + event.getOrigin() + " and is of type: " + event.getType());
+        {
+            logger.trace(
+                    "Received UI video event with origin "
+                        + event.getOrigin()
+                        + " and type "
+                        + event.getType());
+        }
 
         if ((event != null) && !event.isConsumed())
         {
@@ -595,11 +597,11 @@ public class UIVideoHandler
                     switch (origin)
                     {
                     case VideoEvent.LOCAL:
-                        this.localVideo = video;
-                        this.closeButton = new CloseButton();
+                        localVideo = video;
+                        closeButton = new CloseButton();
                         break;
                     case VideoEvent.REMOTE:
-                        this.remoteVideo = video;
+                        remoteVideo = video;
                         break;
                     }
 
@@ -618,13 +620,13 @@ public class UIVideoHandler
                     case VideoEvent.LOCAL:
                         if (localVideo == video)
                         {
-                            this.localVideo = null;
-                            this.closeButton = null;
+                            localVideo = null;
+                            closeButton = null;
                         }
                         break;
                     case VideoEvent.REMOTE:
                         if (remoteVideo == video)
-                            this.remoteVideo = null;
+                            remoteVideo = null;
                         break;
                     }
                     break;
@@ -970,8 +972,7 @@ public class UIVideoHandler
                 {
                     try
                     {
-                        videoTelephony.createLocalVisualComponent(
-                                callPeer, listener);
+                        videoTelephony.getLocalVisualComponent(callPeer);
                     }
                     catch (OperationFailedException ex)
                     {
@@ -983,8 +984,6 @@ public class UIVideoHandler
             }
             else if (localVideo != null)
             {
-                videoTelephony.disposeLocalVisualComponent(
-                        callPeer, localVideo);
                 handleVideoEvent(
                         callPeer.getCall(),
                         new VideoEvent(
@@ -1446,19 +1445,19 @@ public class UIVideoHandler
             return;
         }
 
-        if(videoType == VideoEvent.LOCAL && localVideo != null)
+        switch (videoType)
         {
-            localVideo.addMouseMotionListener(
-                localVideoListener);
-            localVideo.addMouseListener(
-                localVideoListener);
-        }
-        else if(videoType == VideoEvent.REMOTE)
-        {
-            if(allowRemoteControl)
+        case VideoEvent.LOCAL:
+            if (localVideo != null)
             {
-                addMouseAndKeyListeners();
+                localVideo.addMouseMotionListener(localVideoListener);
+                localVideo.addMouseListener(localVideoListener);
             }
+            break;
+        case VideoEvent.REMOTE:
+            if (allowRemoteControl)
+                addMouseAndKeyListeners();
+            break;
         }
     }
 
@@ -1474,13 +1473,10 @@ public class UIVideoHandler
         {
             this.localVideoVisible = isVisible;
 
-            if (isVisible
-                != callRenderer.getCallContainer()
-                    .isShowHideVideoButtonSelected())
-            {
-                callRenderer.getCallContainer()
-                    .setShowHideVideoButtonSelected(isVisible);
-            }
+            CallPanel callContainer = callRenderer.getCallContainer();
+
+            if (isVisible != callContainer.isShowHideVideoButtonSelected())
+                callContainer.setShowHideVideoButtonSelected(isVisible);
 
             int videoContainerCount;
 
@@ -1607,6 +1603,85 @@ public class UIVideoHandler
     }
 
     /**
+     * Creates a new <tt>Component</tt> which is to display a specific
+     * <tt>ImageIcon</tt> representing the photo of a participant in a call and
+     * a <tt>Component</tt> depicting a bar of tools related to video.
+     *
+     * @param photoLabelIcon the <tt>ImageIcon</tt> which represents the photo
+     * of a participant in a call and which is to be displayed by the new
+     * <tt>Component</tt>
+     * @param videoToolbar the <tt>Component</tt> which represents a bar of
+     * tools related to the video and associated with the call participant
+     * depicted by <tt>photoLabelIcon</tt> and which is to be added into the new
+     * <tt>Component</tt>
+     * @return a new <tt>Component</tt> which displays the specified
+     * <tt>photoLabelIcon</tt> and <tt>videoToolbar</tt>
+     */
+    private Component createDefaultPhotoPanel(
+            ImageIcon photoLabelIcon,
+            Component videoToolbar)
+    {
+        JLabel photoLabel = new JLabel();
+
+        photoLabel.setIcon(photoLabelIcon);
+
+        JPanel photoPanel
+            = new TransparentPanel(new GridBagLayout())
+            {
+                /**
+                 * @{inheritDoc}
+                 */
+                @Override
+                public void paintComponent(Graphics g)
+                {
+                    super.paintComponent(g);
+
+                    g = g.create();
+
+                    try
+                    {
+                        AntialiasingManager.activateAntialiasing(g);
+
+                        g.setColor(Color.GRAY);
+                        g.fillRoundRect(
+                                0, 0, this.getWidth(), this.getHeight(),
+                                6, 6);
+                    }
+                    finally
+                    {
+                        g.dispose();
+                    }
+                }
+            };
+
+        photoPanel.setPreferredSize(new Dimension(320, 240));
+
+        GridBagConstraints photoPanelConstraints = new GridBagConstraints();
+
+        photoPanelConstraints.anchor = GridBagConstraints.CENTER;
+        photoPanelConstraints.fill = GridBagConstraints.NONE;
+        photoPanel.add(photoLabel, photoPanelConstraints);
+
+        JPanel defaultPanel = new TransparentPanel(new GridBagLayout());
+        GridBagConstraints defaultPanelConstraints = new GridBagConstraints();
+
+        defaultPanelConstraints.anchor = GridBagConstraints.CENTER;
+        defaultPanelConstraints.fill = GridBagConstraints.BOTH;
+        defaultPanelConstraints.gridx = 0;
+        defaultPanelConstraints.gridy = 0;
+        defaultPanelConstraints.weightx = 1;
+        defaultPanelConstraints.weighty = 1;
+        defaultPanel.add(photoPanel, defaultPanelConstraints);
+
+        defaultPanelConstraints.fill = GridBagConstraints.HORIZONTAL;
+        defaultPanelConstraints.gridy = 1;
+        defaultPanelConstraints.weighty = 0;
+        defaultPanel.add(videoToolbar, defaultPanelConstraints);
+
+        return defaultPanel;
+    }
+
+    /**
      * Creates the default photo panel.
      *
      * @param callPeer the corresponding call peer
@@ -1616,43 +1691,8 @@ public class UIVideoHandler
     private Component createDefaultPhotoPanel(  CallPeer callPeer,
                                                 Component videoToolbar)
     {
-        JPanel defaultPanel = new TransparentPanel(new BorderLayout());
-
-        JPanel photoPanel = new TransparentPanel(new BorderLayout())
-        {
-            /**
-             * @{inheritDoc}
-             */
-            @Override
-            public void paintComponent(Graphics g)
-            {
-                super.paintComponent(g);
-
-                g = g.create();
-
-                try
-                {
-                    AntialiasingManager.activateAntialiasing(g);
-
-                    g.setColor(Color.GRAY);
-                    g.fillRoundRect(
-                        0, 0, this.getWidth(), this.getHeight(), 6, 6);
-                }
-                finally
-                {
-                    g.dispose();
-                }
-            }
-        };
-
-        JLabel photoLabel = new JLabel(getPhotoLabelIcon(callPeer));
-        photoPanel.add(photoLabel);
-        photoPanel.setPreferredSize(new Dimension(320, 240));
-
-        defaultPanel.add(photoPanel, BorderLayout.CENTER);
-        defaultPanel.add(videoToolbar, BorderLayout.SOUTH);
-
-        return defaultPanel;
+        return
+            createDefaultPhotoPanel(getPhotoLabelIcon(callPeer), videoToolbar);
     }
 
     /**
@@ -1666,44 +1706,12 @@ public class UIVideoHandler
                                             ConferenceMember conferenceMember,
                                             Component videoToolbar)
     {
-        JPanel defaultPanel = new TransparentPanel(new BorderLayout());
-
-        JPanel photoPanel = new TransparentPanel(new BorderLayout())
-        {
-            /**
-             * @{inheritDoc}
-             */
-            @Override
-            public void paintComponent(Graphics g)
-            {
-                super.paintComponent(g);
-
-                g = g.create();
-
-                try
-                {
-                    AntialiasingManager.activateAntialiasing(g);
-
-                    g.setColor(Color.GRAY);
-                    g.fillRoundRect(
-                        0, 0, this.getWidth(), this.getHeight(), 6, 6);
-                }
-                finally
-                {
-                    g.dispose();
-                }
-            }
-        };
-
-        JLabel photoLabel = new JLabel(new ImageIcon(
-            ImageLoader.getImage(ImageLoader.DEFAULT_USER_PHOTO)));
-        photoPanel.add(photoLabel);
-        photoPanel.setPreferredSize(new Dimension(320, 240));
-
-        defaultPanel.add(photoPanel, BorderLayout.CENTER);
-        defaultPanel.add(videoToolbar, BorderLayout.SOUTH);
-
-        return defaultPanel;
+        return
+            createDefaultPhotoPanel(
+                    new ImageIcon(
+                            ImageLoader.getImage(
+                                    ImageLoader.DEFAULT_USER_PHOTO)),
+                    videoToolbar);
     }
 
     /**
@@ -1716,68 +1724,26 @@ public class UIVideoHandler
     private Component createDefaultPhotoPanel(  ProtocolProviderService pps,
                                                 Component videoToolbar)
     {
-        JPanel defaultPanel = new TransparentPanel(new BorderLayout());
-
-        JPanel photoPanel
-            = new TransparentPanel(new FlowLayout(FlowLayout.CENTER))
-        {
-            /**
-             * @{inheritDoc}
-             */
-            @Override
-            public void paintComponent(Graphics g)
-            {
-                super.paintComponent(g);
-
-                g = g.create();
-
-                try
-                {
-                    AntialiasingManager.activateAntialiasing(g);
-
-                    g.setColor(Color.GRAY);
-                    g.fillRoundRect(
-                        0, 0, this.getWidth(), this.getHeight(), 6, 6);
-                }
-                finally
-                {
-                    g.dispose();
-                }
-            }
-        };
-
-        JLabel photoLabel = new JLabel();
-
-        final OperationSetServerStoredAccountInfo accountInfoOpSet
-            = pps.getOperationSet(
-                    OperationSetServerStoredAccountInfo.class);
+        OperationSetServerStoredAccountInfo accountInfoOpSet
+            = pps.getOperationSet(OperationSetServerStoredAccountInfo.class);
+        ImageIcon photoLabelIcon = null;
 
         if (accountInfoOpSet != null)
         {
-            byte[] accountImage
-                = AccountInfoUtils.getImage(accountInfoOpSet);
+            byte[] accountImage = AccountInfoUtils.getImage(accountInfoOpSet);
 
             // do not set empty images
-            if ((accountImage != null)
-                    && (accountImage.length > 0))
-            {
-                photoLabel.setIcon(new ImageIcon(accountImage));
-            }
+            if ((accountImage != null) && (accountImage.length > 0))
+                photoLabelIcon = new ImageIcon(accountImage);
         }
-
-        if (photoLabel.getIcon() == null)
+        if (photoLabelIcon == null)
         {
-            photoLabel.setIcon(new ImageIcon(
-                        ImageLoader.getImage(ImageLoader.DEFAULT_USER_PHOTO)));
+            photoLabelIcon
+                = new ImageIcon(
+                        ImageLoader.getImage(ImageLoader.DEFAULT_USER_PHOTO));
         }
 
-        photoPanel.add(photoLabel);
-        photoLabel.setPreferredSize(new Dimension(320, 240));
-
-        defaultPanel.add(photoPanel, BorderLayout.CENTER);
-        defaultPanel.add(localVideoToolbar, BorderLayout.SOUTH);
-
-        return defaultPanel;
+        return createDefaultPhotoPanel(photoLabelIcon, videoToolbar);
     }
 
     private Component createDefaultVideoToolbar(CallPeer callPeer)

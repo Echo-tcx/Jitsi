@@ -1710,6 +1710,9 @@ public class ProtocolProviderServiceJabberImpl
                 addSupportedOperationSet(
                     OperationSetSecureZrtpTelephony.class,
                     basicTelephony);
+                addSupportedOperationSet(
+                    OperationSetSecureSDesTelephony.class,
+                    basicTelephony);
 
                 // initialize video telephony OperationSet
                 addSupportedOperationSet(
@@ -1791,6 +1794,11 @@ public class ProtocolProviderServiceJabberImpl
             supportedFeatures.add(MessageCorrectionExtension.NAMESPACE);
             addSupportedOperationSet(OperationSetMessageCorrection.class,
                     basicInstantMessaging);
+            
+            OperationSetChangePassword opsetChangePassword 
+                    = new OperationSetChangePasswordJabberImpl(this);
+            addSupportedOperationSet(OperationSetChangePassword.class,
+                    opsetChangePassword);
 
             isInitialized = true;
         }

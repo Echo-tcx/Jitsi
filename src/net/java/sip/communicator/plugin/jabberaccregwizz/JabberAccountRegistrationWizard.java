@@ -440,6 +440,18 @@ public class JabberAccountRegistrationWizard
             accountProperties.put("DTMF_METHOD",
                 registration.getDefaultDTMFMethod());
 
+        accountProperties.put(ProtocolProviderFactory.DEFAULT_ENCRYPTION,
+                Boolean.toString(registration.isDefaultEncryption()));
+
+        accountProperties.put(ProtocolProviderFactory.DEFAULT_SIPZRTP_ATTRIBUTE,
+                Boolean.toString(registration.isSipZrtpAttribute()));
+
+        accountProperties.put(ProtocolProviderFactory.SDES_ENABLED,
+            Boolean.toString(registration.isSDesEnabled()));
+
+        accountProperties.put(ProtocolProviderFactory.SDES_CIPHER_SUITES,
+            registration.getSDesCipherSuites());
+
 
         if (isModification())
         {
@@ -735,6 +747,18 @@ public class JabberAccountRegistrationWizard
      */
     protected String getHomeLinkLabel()
     {
+        return null;
+    }
+
+    /**
+     * Return the wizard's protocolProvider, if the wizard modifies an
+     * account, null if it creates a new one
+     * @return the wizard's protocolProvider
+     */
+    public ProtocolProviderService getProtocolProvider()
+    {
+        if(isModification())
+            return protocolProvider;
         return null;
     }
 }

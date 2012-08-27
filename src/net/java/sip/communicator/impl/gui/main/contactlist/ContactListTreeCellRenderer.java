@@ -8,6 +8,7 @@ package net.java.sip.communicator.impl.gui.main.contactlist;
 
 import java.awt.*;
 import java.awt.event.*;
+
 import java.util.*;
 import java.util.List;
 
@@ -194,6 +195,11 @@ public class ContactListTreeCellRenderer
     private TreeContactList tree;
 
     /**
+     * A list of the custom action buttons.
+     */
+    private List<JButton> customActionButtons;
+
+    /**
      * Initializes the panel containing the node.
      */
     public ContactListTreeCellRenderer()
@@ -224,26 +230,7 @@ public class ContactListTreeCellRenderer
         constraints.weighty = 1f;
         this.add(statusLabel, constraints);
 
-        constraints.anchor = GridBagConstraints.WEST;
-        constraints.fill = GridBagConstraints.NONE;
-        constraints.gridx = 1;
-        constraints.gridy = 0;
-        constraints.weightx = 1f;
-        constraints.weighty = 0f;
-        constraints.gridheight = 1;
-        constraints.gridwidth = 5;
-        this.add(nameLabel, constraints);
-
-        rightLabel.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 2));
-
-        constraints.anchor = GridBagConstraints.NORTHEAST;
-        constraints.fill = GridBagConstraints.VERTICAL;
-        constraints.gridx = 6;
-        constraints.gridy = 0;
-        constraints.gridheight = 3;
-        constraints.weightx = 0f;
-        constraints.weighty = 1f;
-        this.add(rightLabel, constraints);
+        addLabels(1);
 
         callButton.addActionListener(new ActionListener()
         {
@@ -454,6 +441,16 @@ public class ContactListTreeCellRenderer
             this.remove(chatButton);
             this.remove(addContactButton);
 
+            if (customActionButtons != null && customActionButtons.size() > 0)
+            {
+                Iterator<JButton> buttonsIter = customActionButtons.iterator();
+                while (buttonsIter.hasNext())
+                {
+                    remove(buttonsIter.next());
+                }
+                customActionButtons.clear();
+            }
+
             this.statusLabel.setIcon(
                     expanded
                     ? openedGroupIcon
@@ -585,6 +582,51 @@ public class ContactListTreeCellRenderer
     }
 
     /**
+     * Adds contact entry labels.
+     *
+     * @param nameLabelGridWidth the grid width of the contact entry name
+     * label
+     */
+    private void addLabels(int nameLabelGridWidth)
+    {
+        remove(nameLabel);
+        remove(rightLabel);
+        remove(displayDetailsLabel);
+
+        constraints.anchor = GridBagConstraints.WEST;
+        constraints.fill = GridBagConstraints.NONE;
+        constraints.gridx = 1;
+        constraints.gridy = 0;
+        constraints.weightx = 1f;
+        constraints.weighty = 0f;
+        constraints.gridheight = 1;
+        constraints.gridwidth = nameLabelGridWidth;
+        this.add(nameLabel, constraints);
+
+        rightLabel.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 2));
+
+        constraints.anchor = GridBagConstraints.NORTHEAST;
+        constraints.fill = GridBagConstraints.VERTICAL;
+        constraints.gridx = nameLabelGridWidth + 1;
+        constraints.gridy = 0;
+        constraints.gridheight = 3;
+        constraints.weightx = 0f;
+        constraints.weighty = 1f;
+        this.add(rightLabel, constraints);
+
+        constraints.anchor = GridBagConstraints.WEST;
+        constraints.fill = GridBagConstraints.NONE;
+        constraints.gridx = 1;
+        constraints.gridy = 1;
+        constraints.weightx = 0f;
+        constraints.weighty = 0f;
+        constraints.gridwidth = nameLabelGridWidth;
+        constraints.gridheight = 1;
+
+        this.add(displayDetailsLabel, constraints);
+    }
+
+    /**
      * Initializes the display details component for the given
      * <tt>UIContact</tt>.
      * @param contact the <tt>UIContact</tt>, for which we initialize the
@@ -592,8 +634,8 @@ public class ContactListTreeCellRenderer
      */
     private void initDisplayDetails(UIContact contact)
     {
+        remove(displayDetailsLabel);
         displayDetailsLabel.setText("");
-        this.remove(displayDetailsLabel);
 
         String displayDetails = contact.getDisplayDetails();
 
@@ -604,18 +646,18 @@ public class ContactListTreeCellRenderer
             displayDetails = displayDetails.replaceAll("\n|<br>|<br/>", " / ");
 
             displayDetailsLabel.setText(displayDetails);
-
-            constraints.anchor = GridBagConstraints.WEST;
-            constraints.fill = GridBagConstraints.NONE;
-            constraints.gridx = 1;
-            constraints.gridy = 1;
-            constraints.weightx = 0f;
-            constraints.weighty = 0f;
-            constraints.gridwidth = 5;
-            constraints.gridheight = 1;
-
-            this.add(displayDetailsLabel, constraints);
         }
+
+        constraints.anchor = GridBagConstraints.WEST;
+        constraints.fill = GridBagConstraints.NONE;
+        constraints.gridx = 1;
+        constraints.gridy = 1;
+        constraints.weightx = 0f;
+        constraints.weighty = 0f;
+        constraints.gridwidth = 1;
+        constraints.gridheight = 1;
+
+        this.add(displayDetailsLabel, constraints);
     }
 
     /**
@@ -630,6 +672,16 @@ public class ContactListTreeCellRenderer
         this.remove(callVideoButton);
         this.remove(desktopSharingButton);
         this.remove(addContactButton);
+
+        if (customActionButtons != null && customActionButtons.size() > 0)
+        {
+            Iterator<JButton> buttonsIter = customActionButtons.iterator();
+            while (buttonsIter.hasNext())
+            {
+                remove(buttonsIter.next());
+            }
+            customActionButtons.clear();
+        }
 
         if (!isSelected)
             return;
@@ -652,11 +704,15 @@ public class ContactListTreeCellRenderer
                 + LEFT_BORDER
                 + STATUS_RIGHT_BORDER;
 
+        // Re-initialize the x grid.
+        constraints.gridx = 0;
+        int gridX = 0;
+
         if (imContact != null)
         {
             constraints.anchor = GridBagConstraints.WEST;
             constraints.fill = GridBagConstraints.NONE;
-            constraints.gridx = 1;
+            constraints.gridx = ++gridX;
             constraints.gridy = 2;
             constraints.gridwidth = 1;
             constraints.gridheight = 1;
@@ -739,13 +795,13 @@ public class ContactListTreeCellRenderer
                 null,
                 null);
 
-        if ((telephonyContact != null && telephonyContact.getAddress() != null) ||
-            uiContact.getDescriptor() instanceof SourceContact ||
+        if ((telephonyContact != null && telephonyContact.getAddress() != null)
+            || uiContact.getDescriptor() instanceof SourceContact ||
             (hasPhone && providers.size() > 0))
         {
             constraints.anchor = GridBagConstraints.WEST;
             constraints.fill = GridBagConstraints.NONE;
-            constraints.gridx = 2;
+            constraints.gridx = ++gridX;
             constraints.gridy = 2;
             constraints.gridwidth = 1;
             constraints.gridheight = 1;
@@ -776,7 +832,7 @@ public class ContactListTreeCellRenderer
         {
             constraints.anchor = GridBagConstraints.WEST;
             constraints.fill = GridBagConstraints.NONE;
-            constraints.gridx = 3;
+            constraints.gridx = ++gridX;
             constraints.gridy = 2;
             constraints.gridwidth = 1;
             constraints.gridheight = 1;
@@ -806,7 +862,7 @@ public class ContactListTreeCellRenderer
         {
             constraints.anchor = GridBagConstraints.WEST;
             constraints.fill = GridBagConstraints.NONE;
-            constraints.gridx = 4;
+            constraints.gridx = ++gridX;
             constraints.gridy = 2;
             constraints.gridwidth = 1;
             constraints.gridheight = 1;
@@ -826,7 +882,7 @@ public class ContactListTreeCellRenderer
         {
             constraints.anchor = GridBagConstraints.WEST;
             constraints.fill = GridBagConstraints.NONE;
-            constraints.gridx = 5;
+            constraints.gridx = ++gridX;
             constraints.gridy = 2;
             constraints.gridwidth = 1;
             constraints.gridheight = 1;
@@ -841,7 +897,70 @@ public class ContactListTreeCellRenderer
             x += addContactButton.getWidth();
         }
 
+        // The list of the contact actions
+        // we will create a button for every action
+        Collection<SIPCommButton> contactActions
+            = uiContact.getContactCustomActionButtons();
+
+        if (contactActions != null)
+        {
+            initContactActionButtons(contactActions, gridX, x);
+        }
+        else
+        {
+            addLabels(gridX);
+        }
+
         this.setBounds(0, 0, tree.getWidth(), getPreferredSize().height);
+    }
+
+    /**
+     * Initializes custom contact action buttons.
+     *
+     * @param contactActionButtons the list of buttons to initialize
+     * @param gridX the X grid of the first button
+     * @param xBounds the x bounds of the first button
+     */
+    private void initContactActionButtons(
+        Collection<SIPCommButton> contactActionButtons,
+        int gridX,
+        int xBounds)
+    {
+        // Reinit the labels to take the whole horizontal space.
+        addLabels(gridX + contactActionButtons.size());
+
+        Iterator<SIPCommButton> actionsIter = contactActionButtons.iterator();
+        while (actionsIter.hasNext())
+        {
+            final SIPCommButton actionButton = actionsIter.next();
+
+            if (customActionButtons == null)
+                customActionButtons = new LinkedList<JButton>();
+
+            customActionButtons.add(actionButton);
+
+            constraints.anchor = GridBagConstraints.WEST;
+            constraints.fill = GridBagConstraints.NONE;
+            constraints.gridx = ++gridX;
+            constraints.gridy = 2;
+            constraints.gridwidth = 1;
+            constraints.gridheight = 1;
+            constraints.weightx = 0f;
+            constraints.weighty = 0f;
+            actionButton.setBorder(null);
+            this.add(actionButton, constraints);
+
+            int statusMessageLabelHeight = 0;
+            if (displayDetailsLabel.getText().length() > 0)
+                statusMessageLabelHeight = 20;
+            else
+                statusMessageLabelHeight = 15;
+
+            actionButton.setBounds(xBounds,
+                nameLabel.getHeight() + statusMessageLabelHeight, 28, 28);
+
+            xBounds += actionButton.getWidth();
+        }
     }
 
     /**
@@ -1289,7 +1408,8 @@ public class ContactListTreeCellRenderer
                                         new ArrayList<String>(),
                                         null,
                                         null,
-                                        null)
+                                        null,
+                                        pnd)
                                 {
                                     public PresenceStatus getPresenceStatus()
                                     {
